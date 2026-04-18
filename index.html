@@ -224,7 +224,7 @@
   <div id="layer-info"><div class="layer-num" id="big-layer">0</div></div>
 
   <div id="danger-meter"><div id="danger-fill"></div></div>
-  <div id="danger-label">DANGER</div>
+  <div id="danger-label">TILT</div>
 
   <div id="wind-indicator">WIND</div>
   <div id="wind-arrow"></div>
@@ -393,6 +393,9 @@ let nextBlockWidthBonus = 0;
 let activeEvent = null;
 let eventTimer = 0;
 
+// Tilt system (deterministic collapse)
+let tiltValue = 0; // 0~1, reaches 1 = collapse
+
 // Wind (level 3)
 let windForce = 0;
 let windTarget = 0;
@@ -427,23 +430,24 @@ const palette = [
 ];
 function getColor(i) { return palette[i % palette.length]; }
 
-// ============ DANGER ============
+// ============ DANGER (tilt-based) ============
 function getDangerLevel() {
   if (!levelConfig || !levelConfig.dangerEnabled) return 0;
-  if (tower.length === 0) return 0;
-  const topW = tower[tower.length - 1].w;
-  const ratio = topW / BASE_W;
-  if (ratio > 0.6) return 0;
-  if (ratio > 0.25) return 1 - (ratio - 0.25) / 0.35;
-  return 1;
+  return tiltValue;
 }
 
-function getCollapseChance() {
-  if (!levelConfig || !levelConfig.collapseEnabled) return 0;
-  const danger = getDangerLevel();
-  if (danger <= 0) return 0;
+function addTilt(newBlock, prevBlock) {
+  if (!levelConfig || !levelConfig.dangerEnabled) return;
+  const newCenter = newBlock.x + newBlock.w / 2;
+  const prevCenter = prevBlock.x + prevBlock.w / 2;
+  const offset = Math.abs(newCenter - prevCenter);
   const mult = levelConfig.dangerMultiplier || 1;
-  return danger * 0.4 * mult;
+  tiltValue = Math.min(1, tiltValue + (offset / BASE_W) * mult);
+}
+
+function reduceTilt() {
+  if (!levelConfig || !levelConfig.dangerEnabled) return;
+  tiltValue = Math.max(0, tiltValue - 0.05);
 }
 
 // ============ LEVEL SELECT ============
@@ -517,6 +521,7 @@ function startLevel(levelNum) {
   windTarget = 0;
   windChangeTimer = 0;
   windParticles = [];
+  tiltValue = 0;
 
   // Wind indicator
   document.getElementById('wind-indicator').style.display = levelConfig.wind ? 'block' : 'none';
@@ -657,6 +662,23 @@ function dropBlock() {
     });
   }
 
+  // Update tilt
+  const prevTilt = tiltValue;
+  if (isPerfect) {
+    reduceTilt();
+  } else {
+    addTilt(newBlock, prev);
+  }
+
+  // Tilt warning feedback
+  if (tiltValue >= 0.7 && prevTilt < 0.7) {
+    spawnFeedbackText('危险!', 'bad');
+    screenShakeAmount = 8;
+  } else if (tiltValue >= 0.5 && prevTilt < 0.5) {
+    spawnFeedbackText('注意倾斜!', 'bad');
+    screenShakeAmount = 4;
+  }
+
   updateHUD();
 
   // Check level clear
@@ -665,17 +687,9 @@ function dropBlock() {
     return;
   }
 
-  // Check collapse
-  const collapseChance = getCollapseChance();
-  const collapsed = Math.random() < collapseChance;
-
-  if (newW < BASE_W * levelConfig.minWidthRatio) {
-    setTimeout(() => triggerCollapse('方块太窄了，塔撑不住'), 300);
-    return;
-  }
-
-  if (collapsed) {
-    setTimeout(() => triggerCollapse('塔摇晃过度，崩塌了'), 400);
+  // Check collapse: tilt reached 100%
+  if (tiltValue >= 1) {
+    setTimeout(() => triggerCollapse('重心偏移过大，塔崩了'), 400);
     return;
   }
 
@@ -926,6 +940,9 @@ function updateHUD() {
   if (danger > 0.7) fill.style.background = 'linear-gradient(0deg, #ff4444, #ff6b6b)';
   else if (danger > 0.3) fill.style.background = 'linear-gradient(0deg, #ffd700, #ff9f43)';
   else fill.style.background = 'linear-gradient(0deg, #00b894, #55efc4)';
+
+  const dangerLabel = document.getElementById('danger-label');
+  dangerLabel.textContent = danger > 0 ? Math.round(danger * 100) + '%' : 'TILT';
 }
 
 function spawnPerfectText(isPerfect, combo) {
@@ -1061,7 +1078,7 @@ function render() {
   // Camera
   cameraY = lerp(cameraY, targetCameraY, dt * 4);
 
-  // Screen shake
+  // Screen shake (collapse + danger-based persistent shake)
   let shakeX = 0, shakeY = 0;
   if (screenShakeAmount > 0) {
     screenShakeAmount *= 0.9;
@@ -1071,7 +1088,14 @@ function render() {
   }
 
   const danger = getDangerLevel();
-  const swayAmount = danger * 4;
+  const swayAmount = danger * 8;
+
+  // Danger-based continuous screen shake
+  if (danger > 0.5 && gameState === 'moving') {
+    const dangerShake = (danger - 0.5) * 6;
+    shakeX += Math.sin(time * 25) * dangerShake;
+    shakeY += Math.cos(time * 22) * dangerShake * 0.5;
+  }
 
   // Wind
   updateWind(dt);
@@ -1090,6 +1114,24 @@ function render() {
     ctx.fillStyle = '#0b0b2e';
   }
   ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // Danger red vignette
+  if (danger > 0.3 && gameState === 'moving') {
+    const vignetteAlpha = (danger - 0.3) * 0.35;
+    const vGrad = ctx.createRadialGradient(W/2, H/2, H * 0.3, W/2, H/2, H * 0.8);
+    vGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    vGrad.addColorStop(1, `rgba(255,30,30,${vignetteAlpha})`);
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Pulsing red border flash at high danger
+    if (danger > 0.7) {
+      const pulseAlpha = (0.1 + Math.sin(time * 6) * 0.08) * ((danger - 0.7) / 0.3);
+      ctx.strokeStyle = `rgba(255,50,50,${pulseAlpha})`;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(3, 3, W - 6, H - 6);
+    }
+  }
 
   // Stars
   for (let i = 0; i < 40; i++) {
@@ -1157,13 +1199,18 @@ function render() {
         block.opacity = (block.opacity || 1) - dt * 0.6;
       }
     } else if (danger > 0 && gameState === 'moving') {
-      const sway = Math.sin(time * 2.5 + i * 0.2) * swayAmount * (i / tower.length);
+      const heightRatio = i / Math.max(tower.length, 1);
+      const sway = Math.sin(time * (2.5 + danger * 3) + i * 0.25) * swayAmount * heightRatio;
+      const tiltRot = Math.sin(time * (2 + danger * 2)) * danger * 0.03 * heightRatio;
       block._drawX = block.x + sway;
+      block._drawRot = tiltRot;
     }
 
     const drawX = block._drawX || block.x;
-    drawBlock({ ...block, x: drawX }, cameraY);
+    const drawRot = block._drawRot || 0;
+    drawBlock({ ...block, x: drawX, visualRot: block.falling ? block.rot : drawRot }, cameraY);
     delete block._drawX;
+    delete block._drawRot;
   });
 
   // Moving block
