@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>赌狗叠叠乐</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    user-select: none;
+  }
+  #game-container {
+    position: relative;
+    width: 420px;
+    height: 720px;
+    background: linear-gradient(180deg, #0b0b2e 0%, #111133 50%, #0a1628 100%);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 0 80px rgba(0,0,0,0.7);
+  }
+  canvas { display: block; cursor: pointer; }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 14px 18px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; z-index: 10;
+  }
+  .hud-col { display: flex; flex-direction: column; gap: 2px; }
+  .hud-col.right { align-items: flex-end; }
+  .hud-col.center { align-items: center; }
+  .lbl { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; }
+  .val { font-size: 30px; font-weight: bold; color: #fff; line-height: 1.1; }
+  .val.gold { color: #ffd700; font-size: 22px; }
+  .val.small { font-size: 16px; color: #aaa; }
+  .combo-tag {
+    margin-top: 3px; padding: 2px 10px; border-radius: 20px;
+    background: linear-gradient(90deg, #ff416c, #ff4b2b);
+    color: #fff; font-size: 11px; font-weight: bold;
+    display: none;
+  }
+  .combo-tag.show { display: inline-block; animation: popIn 0.3s ease-out; }
+  @keyframes popIn { 0%{transform:scale(0)} 100%{transform:scale(1)} }
+
+  #level-hud {
+    position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+    pointer-events: none; z-index: 10; text-align: center;
+    font-size: 12px; color: #888;
+  }
+  #level-hud .level-name { color: #ffd700; font-size: 13px; font-weight: bold; }
+  #level-hud .level-progress { margin-top: 2px; }
+
+  /* Layer info */
+  #layer-info {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 10; text-align: center;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  #layer-info.show { opacity: 1; }
+  #layer-info .layer-num { font-size: 64px; font-weight: bold; color: rgba(255,255,255,0.08); }
+
+  /* Bottom bar */
+  #bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 12px 18px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 10; background: linear-gradient(0deg, rgba(10,10,26,0.95), transparent);
+  }
+  .score-preview { font-size: 13px; color: #888; }
+  .score-preview span { color: #ffd700; font-weight: bold; font-size: 15px; }
+  #btn-cashout {
+    padding: 12px 32px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #00b894, #00cec9);
+    color: #fff; font-size: 16px; font-weight: bold;
+    font-family: inherit; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0,206,201,0.3);
+    transition: all 0.15s;
+  }
+  #btn-cashout:hover { transform: scale(1.05); box-shadow: 0 4px 30px rgba(0,206,201,0.5); }
+  #btn-cashout:active { transform: scale(0.95); }
+  #btn-cashout:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+  /* Perfect indicator */
+  .perfect-flash {
+    position: absolute; z-index: 50; pointer-events: none;
+    font-size: 28px; font-weight: bold; color: #ffd700;
+    text-shadow: 0 0 20px rgba(255,215,0,0.8);
+    animation: perfectAnim 0.8s ease-out forwards;
+  }
+  @keyframes perfectAnim {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(1.4); }
+  }
+  .perfect-flash.good { color: #4ecdc4; text-shadow: 0 0 20px rgba(78,205,196,0.8); }
+  .perfect-flash.bad { color: #ff4444; text-shadow: 0 0 20px rgba(255,0,0,0.8); }
+  .perfect-flash.event { color: #ff9ff3; text-shadow: 0 0 20px rgba(255,159,243,0.8); font-size: 24px; }
+  .perfect-flash.event-good { color: #55efc4; text-shadow: 0 0 20px rgba(85,239,196,0.8); font-size: 24px; }
+  .perfect-flash.event-bad { color: #ff6b6b; text-shadow: 0 0 20px rgba(255,107,107,0.8); font-size: 24px; }
+
+  /* Overlays */
+  .overlay {
+    position: absolute; inset: 0; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(10,10,26,0.93); backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none; transition: opacity 0.35s;
+  }
+  .overlay.active { opacity: 1; pointer-events: all; }
+  .overlay h1 { font-size: 32px; color: #fff; margin-bottom: 6px; }
+  .overlay h2 { font-size: 20px; color: #ffd700; margin-bottom: 16px; font-weight: normal; }
+  .overlay p { color: #999; font-size: 13px; margin-bottom: 5px; line-height: 1.6; }
+  .overlay .btn-main {
+    margin-top: 12px; padding: 14px 48px; border: none; border-radius: 14px;
+    color: #fff; font-size: 18px; font-weight: bold; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .overlay .btn-main:hover { transform: scale(1.05); }
+  .overlay .btn-main:active { transform: scale(0.96); }
+  .btn-red { background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 25px rgba(255,75,43,0.4); }
+  .btn-green { background: linear-gradient(135deg, #00b894, #00cec9); box-shadow: 0 4px 25px rgba(0,206,201,0.4); }
+  .btn-purple { background: linear-gradient(135deg, #a29bfe, #6c5ce7); box-shadow: 0 4px 25px rgba(108,92,231,0.4); }
+  .btn-gold { background: linear-gradient(135deg, #ffd700, #ff9f43); box-shadow: 0 4px 25px rgba(255,215,0,0.4); color: #222; }
+
+  .stat-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;
+    margin: 12px 0; text-align: center;
+  }
+  .stat-grid .stat-label { font-size: 11px; color: #666; }
+  .stat-grid .stat-val { font-size: 22px; font-weight: bold; color: #fff; }
+  .stat-grid .stat-val.hl { color: #ffd700; }
+
+  /* Danger meter */
+  #danger-meter {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    width: 6px; height: 180px; border-radius: 3px;
+    background: rgba(255,255,255,0.06); z-index: 10; overflow: hidden;
+  }
+  #danger-fill {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    border-radius: 3px; transition: height 0.4s, background 0.4s;
+  }
+  #danger-label {
+    position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
+    writing-mode: vertical-rl; text-orientation: mixed;
+    color: #444; font-size: 10px; letter-spacing: 2px; z-index: 10;
+  }
+
+  /* Level select cards */
+  .level-cards { display: flex; gap: 12px; margin: 18px 0; padding: 0 12px; }
+  .level-card {
+    flex: 1; padding: 16px 10px; border-radius: 14px; text-align: center;
+    cursor: pointer; transition: all 0.2s; border: 2px solid transparent;
+    position: relative; overflow: hidden;
+  }
+  .level-card:hover:not(.locked) { transform: translateY(-4px); }
+  .level-card.locked { opacity: 0.4; cursor: not-allowed; }
+  .level-card .lc-num { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 2px; }
+  .level-card .lc-name { font-size: 16px; font-weight: bold; color: #fff; margin: 4px 0; }
+  .level-card .lc-target { font-size: 11px; color: rgba(255,255,255,0.6); }
+  .level-card .lc-reward { font-size: 12px; color: #ffd700; margin-top: 6px; }
+  .level-card .lc-stars { margin-top: 4px; font-size: 14px; }
+  .level-card .lc-lock { font-size: 24px; margin: 8px 0; }
+  .level-card.l1 { background: linear-gradient(135deg, rgba(0,184,148,0.25), rgba(0,206,201,0.15)); border-color: rgba(0,184,148,0.4); }
+  .level-card.l2 { background: linear-gradient(135deg, rgba(255,159,67,0.25), rgba(255,107,107,0.15)); border-color: rgba(255,159,67,0.4); }
+  .level-card.l3 { background: linear-gradient(135deg, rgba(108,92,231,0.25), rgba(232,67,147,0.15)); border-color: rgba(108,92,231,0.4); }
+
+  .stars-display { color: #ffd700; font-size: 18px; letter-spacing: 2px; margin: 8px 0; }
+  .tip { font-size: 12px; color: #555; margin-top: 8px; }
+  .title-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 20px;
+    background: linear-gradient(90deg, #ffd700, #ff9f43);
+    color: #222; font-size: 12px; font-weight: bold; margin-top: 8px;
+  }
+
+  /* Wind indicator */
+  #wind-indicator {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    writing-mode: vertical-rl; text-orientation: mixed;
+    color: #444; font-size: 10px; letter-spacing: 2px; z-index: 10;
+    display: none;
+  }
+  #wind-arrow {
+    position: absolute; left: 14px; top: calc(50% + 40px); transform: translateY(-50%);
+    font-size: 18px; z-index: 10; display: none;
+    transition: transform 0.3s;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="canvas" width="420" height="720"></canvas>
+
+  <div id="hud">
+    <div class="hud-col">
+      <div class="lbl">LAYER</div>
+      <div class="val" id="hud-layer">0</div>
+      <div class="combo-tag" id="combo-tag">PERFECT x0</div>
+    </div>
+    <div class="hud-col center">
+      <div class="lbl">SCORE</div>
+      <div class="val" id="hud-score">0</div>
+    </div>
+    <div class="hud-col right">
+      <div class="lbl">BEST</div>
+      <div class="val small" id="hud-best">0</div>
+      <div class="lbl" style="margin-top:4px">GOLD</div>
+      <div class="val gold" id="hud-gold">0</div>
+    </div>
+  </div>
+
+  <div id="level-hud">
+    <div class="level-name" id="level-name-hud"></div>
+    <div class="level-progress" id="level-progress-hud"></div>
+  </div>
+
+  <div id="layer-info"><div class="layer-num" id="big-layer">0</div></div>
+
+  <div id="danger-meter"><div id="danger-fill"></div></div>
+  <div id="danger-label">DANGER</div>
+
+  <div id="wind-indicator">WIND</div>
+  <div id="wind-arrow"></div>
+
+  <div id="bottom-bar">
+    <div class="score-preview" id="score-preview">
+      落袋可得 <span id="preview-score">0</span> 分
+    </div>
+    <button id="btn-cashout" disabled>收手</button>
+  </div>
+
+  <!-- Level Select -->
+  <div class="overlay active" id="select-overlay">
+    <h1>赌狗叠叠乐</h1>
+    <h2>选择关卡</h2>
+    <div class="level-cards" id="level-cards"></div>
+    <div class="tip">空格/点击 = 放下 &nbsp; Enter = 收手</div>
+  </div>
+
+  <!-- Game Over -->
+  <div class="overlay" id="crash-overlay">
+    <h1 id="crash-title">塔崩了!</h1>
+    <div class="stat-grid">
+      <div><div class="stat-label">叠了</div><div class="stat-val" id="crash-layers">0</div></div>
+      <div><div class="stat-label">目标</div><div class="stat-val" id="crash-target">0</div></div>
+      <div><div class="stat-label">分数</div><div class="stat-val hl" id="crash-score">0</div></div>
+      <div><div class="stat-label">精准度</div><div class="stat-val" id="crash-accuracy">0%</div></div>
+    </div>
+    <p id="crash-reason"></p>
+    <button class="btn-main btn-red" id="btn-retry">重试本关</button>
+    <button class="btn-main btn-purple" id="btn-back-crash" style="margin-top:8px; padding:10px 36px; font-size:14px;">返回选关</button>
+  </div>
+
+  <!-- Level Clear -->
+  <div class="overlay" id="clear-overlay">
+    <h1 id="clear-title">通关!</h1>
+    <div class="stars-display" id="clear-stars"></div>
+    <div class="stat-grid">
+      <div><div class="stat-label">层数</div><div class="stat-val" id="clear-layers">0</div></div>
+      <div><div class="stat-label">分数</div><div class="stat-val hl" id="clear-score">0</div></div>
+      <div><div class="stat-label">金币</div><div class="stat-val hl" id="clear-gold">+0</div></div>
+      <div><div class="stat-label">精准度</div><div class="stat-val" id="clear-accuracy">0%</div></div>
+    </div>
+    <div id="clear-badge"></div>
+    <button class="btn-main btn-gold" id="btn-next" style="display:none;">下一关</button>
+    <button class="btn-main btn-green" id="btn-back-clear" style="margin-top:8px; padding:10px 36px; font-size:14px;">返回选关</button>
+  </div>
+
+  <!-- Cash Out -->
+  <div class="overlay" id="cash-overlay">
+    <h1>落袋为安!</h1>
+    <div class="stat-grid">
+      <div><div class="stat-label">层数</div><div class="stat-val" id="cash-layers">0</div></div>
+      <div><div class="stat-label">入账</div><div class="stat-val hl" id="cash-score">0</div></div>
+      <div><div class="stat-label">金币</div><div class="stat-val hl" id="cash-gold-earn">+0</div></div>
+      <div><div class="stat-label">精准度</div><div class="stat-val" id="cash-accuracy">0%</div></div>
+    </div>
+    <p style="color:#ff9f43; font-size:12px;">收手不计入通关，继续挑战吧!</p>
+    <button class="btn-main btn-green" id="btn-continue">继续挑战</button>
+  </div>
+</div>
+
+<script>
+// ============ LEVEL CONFIG ============
+const LEVELS = [
+  {
+    id: 1,
+    name: '稳健理财',
+    subtitle: '新手试水，稳扎稳打',
+    targetLayers: 10,
+    speedMult: 0.7,
+    speedIncrement: 0.1,
+    perfectThreshold: 8,
+    minWidthRatio: 0.4,
+    collapseEnabled: false,
+    dangerEnabled: false,
+    events: false,
+    wind: false,
+    visualRotation: false,
+    reward: 50,
+    bgColors: ['#0b0b2e', '#111133', '#0a1628'],
+    starThresholds: [40, 60, 80], // accuracy % for 1/2/3 stars
+  },
+  {
+    id: 2,
+    name: '激进投资',
+    subtitle: '随机事件，刺激翻倍',
+    targetLayers: 15,
+    speedMult: 1.2,
+    speedIncrement: 0.18,
+    perfectThreshold: 6,
+    minWidthRatio: 0.08,
+    collapseEnabled: true,
+    dangerEnabled: true,
+    events: true,
+    wind: false,
+    visualRotation: false,
+    reward: 150,
+    bgColors: ['#1a0a0a', '#2a1515', '#1a0a1e'],
+    starThresholds: [35, 55, 75],
+  },
+  {
+    id: 3,
+    name: '梭哈之夜',
+    subtitle: '狂风骤起，赌神降临',
+    targetLayers: 20,
+    speedMult: 1.8,
+    speedIncrement: 0.22,
+    perfectThreshold: 4,
+    minWidthRatio: 0.08,
+    collapseEnabled: true,
+    dangerEnabled: true,
+    events: false,
+    wind: true,
+    visualRotation: true,
+    reward: 500,
+    bgColors: ['#1a0520', '#2a0a2a', '#150520'],
+    starThresholds: [30, 50, 70],
+    dangerMultiplier: 1.5,
+  },
+];
+
+// ============ CORE ============
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 420, H = 720;
+
+// Persistent state (saved to localStorage)
+let gold = parseInt(localStorage.getItem('ddl_gold') || '0');
+let bestScores = JSON.parse(localStorage.getItem('ddl_bestScores') || '[0,0,0]');
+let levelStars = JSON.parse(localStorage.getItem('ddl_stars') || '[0,0,0]');
+let unlockedLevel = parseInt(localStorage.getItem('ddl_unlocked') || '1');
+let hasTitle = localStorage.getItem('ddl_title') === 'true';
+
+function saveState() {
+  localStorage.setItem('ddl_gold', gold);
+  localStorage.setItem('ddl_bestScores', JSON.stringify(bestScores));
+  localStorage.setItem('ddl_stars', JSON.stringify(levelStars));
+  localStorage.setItem('ddl_unlocked', unlockedLevel);
+  localStorage.setItem('ddl_title', hasTitle);
+}
+
+// Round state
+let gameState = 'select'; // select | moving | dropping | gameover | cashed | cleared
+let currentLevel = null;
+let levelConfig = null;
+let layer = 0;
+let score = 0;
+let perfectCombo = 0;
+let totalPerfects = 0;
+let totalDrops = 0;
+
+// Tower
+let tower = [];
+let movingBlock = null;
+let droppingBlock = null;
+let cutPiece = null;
+let particles = [];
+let cameraY = 0;
+let targetCameraY = 0;
+
+// Events (level 2)
+let nextBlockSpeedMult = 1;
+let nextBlockReverse = false;
+let nextBlockWidthBonus = 0;
+let activeEvent = null;
+let eventTimer = 0;
+
+// Wind (level 3)
+let windForce = 0;
+let windTarget = 0;
+let windChangeTimer = 0;
+let windParticles = [];
+
+// Settings
+const BLOCK_H = 26;
+const BASE_W = 200;
+const BASE_Y = H - 100;
+const BASE_SPEED = 2.5;
+const GRAVITY = 1800;
+
+// ============ HELPERS ============
+function lerp(a, b, t) { return a + (b - a) * Math.min(1, Math.max(0, t)); }
+function rand(a, b) { return Math.random() * (b - a) + a; }
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r); ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h); ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r); ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y); ctx.closePath();
+}
+
+const palette = [
+  ['#ff6b6b','#ee5a24'], ['#feca57','#ff9f43'], ['#48dbfb','#0abde3'],
+  ['#ff9ff3','#f368e0'], ['#55efc4','#00b894'], ['#a29bfe','#6c5ce7'],
+  ['#fd79a8','#e84393'], ['#74b9ff','#0984e3'], ['#ffeaa7','#fdcb6e'],
+  ['#dfe6e9','#b2bec3'], ['#00cec9','#00b894'], ['#e17055','#d63031'],
+];
+function getColor(i) { return palette[i % palette.length]; }
+
+// ============ DANGER ============
+function getDangerLevel() {
+  if (!levelConfig || !levelConfig.dangerEnabled) return 0;
+  if (tower.length === 0) return 0;
+  const topW = tower[tower.length - 1].w;
+  const ratio = topW / BASE_W;
+  if (ratio > 0.6) return 0;
+  if (ratio > 0.25) return 1 - (ratio - 0.25) / 0.35;
+  return 1;
+}
+
+function getCollapseChance() {
+  if (!levelConfig || !levelConfig.collapseEnabled) return 0;
+  const danger = getDangerLevel();
+  if (danger <= 0) return 0;
+  const mult = levelConfig.dangerMultiplier || 1;
+  return danger * 0.4 * mult;
+}
+
+// ============ LEVEL SELECT ============
+function renderLevelSelect() {
+  const container = document.getElementById('level-cards');
+  container.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const unlocked = (i + 1) <= unlockedLevel;
+    const stars = levelStars[i];
+    const best = bestScores[i];
+    const card = document.createElement('div');
+    card.className = `level-card l${i+1}${unlocked ? '' : ' locked'}`;
+    if (unlocked) {
+      card.innerHTML = `
+        <div class="lc-num">LEVEL ${i+1}</div>
+        <div class="lc-name">${lv.name}</div>
+        <div class="lc-target">叠${lv.targetLayers}层通关</div>
+        <div class="lc-reward">${lv.reward} 金币</div>
+        <div class="lc-stars">${stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3-stars) : '☆☆☆'}</div>
+        ${best > 0 ? `<div style="font-size:10px;color:#888;margin-top:2px;">最高 ${best}分</div>` : ''}
+      `;
+      card.onclick = () => startLevel(i + 1);
+    } else {
+      card.innerHTML = `
+        <div class="lc-num">LEVEL ${i+1}</div>
+        <div class="lc-name">${lv.name}</div>
+        <div class="lc-lock">🔒</div>
+        <div class="lc-target" style="color:#666;">通关上一关解锁</div>
+      `;
+    }
+    container.appendChild(card);
+  });
+}
+
+function showLevelSelect() {
+  hideAllOverlays();
+  document.getElementById('select-overlay').classList.add('active');
+  gameState = 'select';
+  renderLevelSelect();
+}
+
+function hideAllOverlays() {
+  document.querySelectorAll('.overlay').forEach(o => o.classList.remove('active'));
+}
+
+// ============ GAME LOGIC ============
+function startLevel(levelNum) {
+  currentLevel = levelNum;
+  levelConfig = LEVELS[levelNum - 1];
+  hideAllOverlays();
+
+  gameState = 'start';
+  layer = 0;
+  score = 0;
+  perfectCombo = 0;
+  totalPerfects = 0;
+  totalDrops = 0;
+  tower = [];
+  movingBlock = null;
+  droppingBlock = null;
+  cutPiece = null;
+  particles = [];
+  cameraY = 0;
+  targetCameraY = 0;
+  nextBlockSpeedMult = 1;
+  nextBlockReverse = false;
+  nextBlockWidthBonus = 0;
+  activeEvent = null;
+  eventTimer = 0;
+  windForce = 0;
+  windTarget = 0;
+  windChangeTimer = 0;
+  windParticles = [];
+
+  // Wind indicator
+  document.getElementById('wind-indicator').style.display = levelConfig.wind ? 'block' : 'none';
+  document.getElementById('wind-arrow').style.display = levelConfig.wind ? 'block' : 'none';
+
+  // Base block
+  tower.push({
+    x: W / 2 - BASE_W / 2,
+    w: BASE_W,
+    y: BASE_Y,
+    color: getColor(0),
+  });
+
+  spawnMovingBlock();
+  updateHUD();
+}
+
+function spawnMovingBlock() {
+  if (tower.length === 0) return;
+  const prev = tower[tower.length - 1];
+  let speed = (BASE_SPEED * levelConfig.speedMult) + layer * levelConfig.speedIncrement;
+
+  // Event: speed mult
+  speed *= nextBlockSpeedMult;
+  nextBlockSpeedMult = 1;
+
+  const y = prev.y - BLOCK_H;
+  let startLeft = Math.random() < 0.5;
+
+  // Event: reverse
+  if (nextBlockReverse) {
+    startLeft = !startLeft;
+    speed *= 1.3;
+    nextBlockReverse = false;
+  }
+
+  // Event: width bonus
+  let w = prev.w;
+  if (nextBlockWidthBonus > 0) {
+    w = Math.min(BASE_W, w + BASE_W * nextBlockWidthBonus);
+    nextBlockWidthBonus = 0;
+  }
+
+  movingBlock = {
+    x: startLeft ? -w : W,
+    w: w,
+    y: y,
+    dir: startLeft ? 1 : -1,
+    speed: speed,
+    color: getColor(layer + 1),
+    visualRot: 0,
+  };
+
+  gameState = 'moving';
+  targetCameraY = Math.max(0, (BASE_Y - y) - H * 0.55);
+  document.getElementById('btn-cashout').disabled = layer < 1;
+}
+
+function dropBlock() {
+  if (gameState !== 'moving' || !movingBlock) return;
+  gameState = 'dropping';
+  totalDrops++;
+
+  const prev = tower[tower.length - 1];
+  const mb = movingBlock;
+
+  const overlapLeft = Math.max(mb.x, prev.x);
+  const overlapRight = Math.min(mb.x + mb.w, prev.x + prev.w);
+  const overlapW = overlapRight - overlapLeft;
+
+  if (overlapW <= 0) {
+    cutPiece = { x: mb.x, w: mb.w, y: mb.y, vy: 0, vx: mb.dir * 80, rot: 0, vr: mb.dir * 2, color: mb.color, opacity: 1 };
+    movingBlock = null;
+    triggerCollapse('你完美地错过了整个方块');
+    return;
+  }
+
+  const offset = Math.abs((mb.x + mb.w/2) - (prev.x + prev.w/2));
+  const isPerfect = offset <= levelConfig.perfectThreshold;
+
+  let newX = overlapLeft;
+  let newW = overlapW;
+
+  // Level 1: min width guarantee
+  if (levelConfig.minWidthRatio > 0.08 && newW < BASE_W * levelConfig.minWidthRatio) {
+    newW = BASE_W * levelConfig.minWidthRatio;
+    newX = prev.x + prev.w / 2 - newW / 2;
+  }
+
+  if (isPerfect) {
+    newX = prev.x;
+    newW = prev.w;
+    perfectCombo++;
+    totalPerfects++;
+    spawnPerfectText(isPerfect, perfectCombo);
+  } else {
+    perfectCombo = 0;
+    const cutLeft = mb.x < prev.x;
+    const cutW = mb.w - overlapW;
+    const cutX = cutLeft ? mb.x : overlapRight;
+    cutPiece = {
+      x: cutX, w: cutW, y: mb.y, vy: 0,
+      vx: cutLeft ? -120 : 120, rot: 0, vr: cutLeft ? -3 : 3,
+      color: mb.color, opacity: 1,
+    };
+
+    if (overlapW / prev.w > 0.85) {
+      spawnFeedbackText('GOOD', 'good');
+    } else if (overlapW / prev.w < 0.4) {
+      spawnFeedbackText('RISKY!', 'bad');
+    }
+  }
+
+  layer++;
+
+  // Score
+  let layerScore = 10 * layer;
+  if (isPerfect) {
+    const comboMult = Math.min(perfectCombo, 8);
+    layerScore *= (1 + comboMult * 0.5);
+  }
+  layerScore = Math.round(layerScore);
+
+  // Event: score multiplier (already applied before adding)
+  score += layerScore;
+
+  const newBlock = { x: newX, w: newW, y: mb.y, color: mb.color };
+  tower.push(newBlock);
+  movingBlock = null;
+
+  // Particles
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x: newX + rand(0, newW), y: newBlock.y,
+      vx: rand(-100, 100), vy: rand(-200, -50),
+      life: 1, size: rand(2, 5),
+      color: isPerfect ? '#ffd700' : newBlock.color[0],
+    });
+  }
+
+  updateHUD();
+
+  // Check level clear
+  if (layer >= levelConfig.targetLayers) {
+    setTimeout(() => triggerClear(), 400);
+    return;
+  }
+
+  // Check collapse
+  const collapseChance = getCollapseChance();
+  const collapsed = Math.random() < collapseChance;
+
+  if (newW < BASE_W * levelConfig.minWidthRatio) {
+    setTimeout(() => triggerCollapse('方块太窄了，塔撑不住'), 300);
+    return;
+  }
+
+  if (collapsed) {
+    setTimeout(() => triggerCollapse('塔摇晃过度，崩塌了'), 400);
+    return;
+  }
+
+  // Random events (level 2)
+  if (levelConfig.events && layer >= 3) {
+    triggerRandomEvent();
+  }
+
+  // Next block
+  setTimeout(() => {
+    if (gameState === 'dropping') spawnMovingBlock();
+  }, 250);
+}
+
+// ============ RANDOM EVENTS (Level 2) ============
+function triggerRandomEvent() {
+  const roll = Math.random();
+  if (roll < 0.15) {
+    // Score double
+    const bonus = score;
+    score *= 2;
+    activeEvent = { type: 'double', timer: 1 };
+    spawnEventText('💰 分数翻倍!', 'event-good');
+    // Gold particles
+    for (let i = 0; i < 15; i++) {
+      particles.push({
+        x: W/2 + rand(-80, 80), y: H/3,
+        vx: rand(-100, 100), vy: rand(-150, -30),
+        life: 1.2, size: rand(3, 6), color: '#ffd700',
+      });
+    }
+  } else if (roll < 0.30) {
+    // Speed up next block
+    nextBlockSpeedMult = 2;
+    activeEvent = { type: 'speed', timer: 1 };
+    spawnEventText('⚡ 下一块加速!', 'event-bad');
+  } else if (roll < 0.40) {
+    // Reverse next block
+    nextBlockReverse = true;
+    activeEvent = { type: 'reverse', timer: 1 };
+    spawnEventText('🔄 下一块反向!', 'event');
+  } else if (roll < 0.48) {
+    // Width bonus
+    nextBlockWidthBonus = 0.5;
+    activeEvent = { type: 'widen', timer: 1 };
+    spawnEventText('📏 下一块加宽!', 'event-good');
+  }
+  // else: no event
+}
+
+// ============ WIND (Level 3) ============
+function updateWind(dt) {
+  if (!levelConfig || !levelConfig.wind) return;
+
+  windChangeTimer -= dt;
+  if (windChangeTimer <= 0) {
+    windTarget = rand(-2.5, 2.5);
+    windChangeTimer = rand(1.5, 4);
+  }
+  windForce = lerp(windForce, windTarget, dt * 2);
+
+  // Update wind arrow
+  const arrow = document.getElementById('wind-arrow');
+  if (windForce > 0.3) { arrow.textContent = '→'; arrow.style.color = '#ff6b6b'; }
+  else if (windForce < -0.3) { arrow.textContent = '←'; arrow.style.color = '#48dbfb'; }
+  else { arrow.textContent = '·'; arrow.style.color = '#666'; }
+
+  // Wind particles
+  if (Math.random() < 0.3) {
+    windParticles.push({
+      x: windForce > 0 ? -10 : W + 10,
+      y: rand(100, H - 100),
+      speed: Math.abs(windForce) * 60 + rand(20, 60),
+      dir: windForce > 0 ? 1 : -1,
+      life: 1, size: rand(1, 3),
+    });
+  }
+
+  windParticles.forEach(p => {
+    p.x += p.dir * p.speed * dt;
+    p.y += rand(-10, 10) * dt;
+    p.life -= dt * 0.5;
+  });
+  windParticles = windParticles.filter(p => p.life > 0 && p.x > -20 && p.x < W + 20);
+}
+
+// ============ COLLAPSE / CLEAR ============
+function triggerCollapse(reason) {
+  gameState = 'gameover';
+  movingBlock = null;
+
+  tower.forEach((block, i) => {
+    block.falling = true;
+    block.vy = 0;
+    block.vx = rand(-150, 150);
+    block.vr = rand(-5, 5);
+    block.rot = 0;
+    block.fallDelay = i * 0.03;
+    block.opacity = 1;
+  });
+
+  screenShakeAmount = 15;
+
+  setTimeout(() => {
+    const accuracy = totalDrops > 0 ? Math.round((totalPerfects / totalDrops) * 100) : 0;
+    const lvIdx = currentLevel - 1;
+    if (score > bestScores[lvIdx]) { bestScores[lvIdx] = score; saveState(); }
+
+    document.getElementById('crash-layers').textContent = layer;
+    document.getElementById('crash-target').textContent = levelConfig.targetLayers;
+    document.getElementById('crash-score').textContent = score;
+    document.getElementById('crash-accuracy').textContent = accuracy + '%';
+    document.getElementById('crash-reason').textContent = reason;
+    document.getElementById('crash-overlay').classList.add('active');
+  }, 1000);
+}
+
+function triggerClear() {
+  gameState = 'cleared';
+  movingBlock = null;
+
+  const accuracy = totalDrops > 0 ? Math.round((totalPerfects / totalDrops) * 100) : 0;
+  const lvIdx = currentLevel - 1;
+
+  // Calculate stars
+  let stars = 0;
+  const thresholds = levelConfig.starThresholds;
+  if (accuracy >= thresholds[2]) stars = 3;
+  else if (accuracy >= thresholds[1]) stars = 2;
+  else if (accuracy >= thresholds[0]) stars = 1;
+  else stars = 1; // always at least 1 star for clearing
+
+  // Update records
+  if (stars > levelStars[lvIdx]) levelStars[lvIdx] = stars;
+  if (score > bestScores[lvIdx]) bestScores[lvIdx] = score;
+
+  const earnedGold = levelConfig.reward;
+  gold += earnedGold;
+
+  // Unlock next level
+  if (currentLevel < 3 && unlockedLevel <= currentLevel) {
+    unlockedLevel = currentLevel + 1;
+  }
+
+  // Title for level 3
+  if (currentLevel === 3) hasTitle = true;
+
+  saveState();
+
+  // Celebration particles
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: W/2 + rand(-120, 120), y: H/2 + rand(-60, 60),
+      vx: rand(-200, 200), vy: rand(-300, -100),
+      life: 1.5, size: rand(3, 7),
+      color: ['#ffd700', '#ff6b6b', '#55efc4', '#48dbfb', '#ff9ff3'][Math.floor(Math.random()*5)],
+    });
+  }
+
+  // Show clear overlay
+  setTimeout(() => {
+    document.getElementById('clear-title').textContent =
+      currentLevel === 3 ? '赌神降临!' : '通关!';
+    document.getElementById('clear-stars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+    document.getElementById('clear-layers').textContent = layer;
+    document.getElementById('clear-score').textContent = score;
+    document.getElementById('clear-gold').textContent = '+' + earnedGold;
+    document.getElementById('clear-accuracy').textContent = accuracy + '%';
+
+    const badge = document.getElementById('clear-badge');
+    if (currentLevel === 3) {
+      badge.innerHTML = '<div class="title-badge">🎰 赌神</div>';
+    } else {
+      badge.innerHTML = '';
+    }
+
+    const btnNext = document.getElementById('btn-next');
+    if (currentLevel < 3) {
+      btnNext.style.display = 'inline-block';
+      btnNext.textContent = '下一关: ' + LEVELS[currentLevel].name;
+    } else {
+      btnNext.style.display = 'none';
+    }
+
+    document.getElementById('clear-overlay').classList.add('active');
+  }, 600);
+}
+
+function doCashOut() {
+  if (gameState !== 'moving' || layer < 1) return;
+  gameState = 'cashed';
+  movingBlock = null;
+
+  const earnedGold = Math.max(1, Math.round(score * 0.05));
+  gold += earnedGold;
+  saveState();
+
+  const accuracy = totalDrops > 0 ? Math.round((totalPerfects / totalDrops) * 100) : 0;
+
+  for (let i = 0; i < 20; i++) {
+    particles.push({
+      x: W/2 + rand(-60, 60), y: H/2 + rand(-40, 40),
+      vx: rand(-150, 150), vy: rand(-250, -80),
+      life: 1, size: rand(3, 7), color: '#ffd700',
+    });
+  }
+
+  document.getElementById('cash-layers').textContent = layer;
+  document.getElementById('cash-score').textContent = score;
+  document.getElementById('cash-gold-earn').textContent = '+' + earnedGold;
+  document.getElementById('cash-accuracy').textContent = accuracy + '%';
+
+  setTimeout(() => {
+    document.getElementById('cash-overlay').classList.add('active');
+  }, 300);
+
+  updateHUD();
+}
+
+// ============ UI ============
+function updateHUD() {
+  document.getElementById('hud-layer').textContent = layer;
+  document.getElementById('hud-score').textContent = score;
+  document.getElementById('hud-best').textContent = bestScores[currentLevel ? currentLevel - 1 : 0];
+  document.getElementById('hud-gold').textContent = gold;
+  document.getElementById('big-layer').textContent = layer;
+  document.getElementById('preview-score').textContent = score;
+
+  if (levelConfig) {
+    document.getElementById('level-name-hud').textContent = levelConfig.name;
+    document.getElementById('level-progress-hud').textContent = layer + ' / ' + levelConfig.targetLayers;
+  }
+
+  const layerInfo = document.getElementById('layer-info');
+  layerInfo.classList.toggle('show', gameState === 'moving');
+
+  const tag = document.getElementById('combo-tag');
+  if (perfectCombo >= 2) {
+    tag.textContent = 'PERFECT x' + perfectCombo;
+    tag.classList.add('show');
+  } else {
+    tag.classList.remove('show');
+  }
+
+  const danger = getDangerLevel();
+  const fill = document.getElementById('danger-fill');
+  fill.style.height = (danger * 100) + '%';
+  if (danger > 0.7) fill.style.background = 'linear-gradient(0deg, #ff4444, #ff6b6b)';
+  else if (danger > 0.3) fill.style.background = 'linear-gradient(0deg, #ffd700, #ff9f43)';
+  else fill.style.background = 'linear-gradient(0deg, #00b894, #55efc4)';
+}
+
+function spawnPerfectText(isPerfect, combo) {
+  const texts = ['PERFECT!', 'PERFECT!!', 'INSANE!!!', 'GODLIKE!!!!'];
+  const text = combo >= 4 ? texts[3] : combo >= 3 ? texts[2] : combo >= 2 ? texts[1] : texts[0];
+  const el = document.createElement('div');
+  el.className = 'perfect-flash';
+  el.textContent = text + (combo >= 2 ? ' x' + combo : '');
+  el.style.left = (W/2 - 80) + 'px';
+  el.style.top = (H/2 - 40) + 'px';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+function spawnFeedbackText(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'perfect-flash ' + cls;
+  el.textContent = text;
+  el.style.left = (W/2 - 40) + 'px';
+  el.style.top = (H/2 - 40) + 'px';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+function spawnEventText(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'perfect-flash ' + cls;
+  el.textContent = text;
+  el.style.left = (W/2 - 90) + 'px';
+  el.style.top = (H/2 - 80) + 'px';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 1200);
+}
+
+// ============ INPUT ============
+function handleAction() {
+  if (gameState === 'moving') dropBlock();
+}
+
+canvas.addEventListener('click', handleAction);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(); });
+
+document.getElementById('btn-cashout').addEventListener('click', (e) => {
+  e.stopPropagation();
+  doCashOut();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); handleAction(); }
+  if (e.code === 'Enter') { e.preventDefault(); doCashOut(); }
+});
+
+document.getElementById('btn-retry').onclick = () => {
+  document.getElementById('crash-overlay').classList.remove('active');
+  startLevel(currentLevel);
+};
+document.getElementById('btn-back-crash').onclick = showLevelSelect;
+document.getElementById('btn-continue').onclick = () => {
+  document.getElementById('cash-overlay').classList.remove('active');
+  startLevel(currentLevel);
+};
+document.getElementById('btn-next').onclick = () => {
+  document.getElementById('clear-overlay').classList.remove('active');
+  if (currentLevel < 3) startLevel(currentLevel + 1);
+  else showLevelSelect();
+};
+document.getElementById('btn-back-clear').onclick = () => {
+  document.getElementById('clear-overlay').classList.remove('active');
+  showLevelSelect();
+};
+
+// ============ RENDER ============
+let lastTime = performance.now();
+let screenShakeAmount = 0;
+let time = 0;
+
+function drawBlock(block, camY) {
+  const y = block.y + camY;
+  if (y > H + 40 || y < -60) return;
+
+  const colors = block.color;
+  const x = block.x;
+  const w = block.w;
+
+  ctx.save();
+  if (block.falling) {
+    ctx.translate(x + w/2, y + BLOCK_H/2);
+    ctx.rotate(block.rot || 0);
+    ctx.globalAlpha = block.opacity || 1;
+    ctx.translate(-(x + w/2), -(y + BLOCK_H/2));
+  }
+
+  // Visual rotation for level 3
+  if (block.visualRot && !block.falling) {
+    ctx.translate(x + w/2, y + BLOCK_H/2);
+    ctx.rotate(block.visualRot);
+    ctx.translate(-(x + w/2), -(y + BLOCK_H/2));
+  }
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(x + 2, y + 2, w, BLOCK_H, 4);
+  ctx.fill();
+
+  // Main block
+  const grad = ctx.createLinearGradient(x, y, x + w, y + BLOCK_H);
+  grad.addColorStop(0, colors[0]);
+  grad.addColorStop(1, colors[1]);
+  ctx.fillStyle = grad;
+  roundRect(x, y, w, BLOCK_H, 4);
+  ctx.fill();
+
+  // Top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  roundRect(x + 3, y + 2, w - 6, BLOCK_H * 0.35, 3);
+  ctx.fill();
+
+  // Edge lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 0.5;
+  roundRect(x, y, w, BLOCK_H, 4);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function render() {
+  const now = performance.now();
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+  time += dt;
+
+  // Camera
+  cameraY = lerp(cameraY, targetCameraY, dt * 4);
+
+  // Screen shake
+  let shakeX = 0, shakeY = 0;
+  if (screenShakeAmount > 0) {
+    screenShakeAmount *= 0.9;
+    if (screenShakeAmount < 0.5) screenShakeAmount = 0;
+    shakeX = Math.sin(time * 50) * screenShakeAmount;
+    shakeY = Math.cos(time * 47) * screenShakeAmount * 0.7;
+  }
+
+  const danger = getDangerLevel();
+  const swayAmount = danger * 4;
+
+  // Wind
+  updateWind(dt);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background
+  if (levelConfig) {
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, levelConfig.bgColors[0]);
+    bgGrad.addColorStop(0.5, levelConfig.bgColors[1]);
+    bgGrad.addColorStop(1, levelConfig.bgColors[2]);
+    ctx.fillStyle = bgGrad;
+  } else {
+    ctx.fillStyle = '#0b0b2e';
+  }
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // Stars
+  for (let i = 0; i < 40; i++) {
+    const sx = (i * 73.7) % W;
+    const sy = ((i * 41.3) + cameraY * 0.1) % H;
+    ctx.globalAlpha = 0.2 + Math.sin(time * 1.5 + i) * 0.15;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(sx, sy, 1.2, 1.2);
+  }
+  ctx.globalAlpha = 1;
+
+  // Wind particles (level 3)
+  if (levelConfig && levelConfig.wind) {
+    windParticles.forEach(p => {
+      ctx.globalAlpha = p.life * 0.3;
+      ctx.fillStyle = '#a29bfe';
+      ctx.fillRect(p.x, p.y, p.size * 4, p.size);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // Ground
+  const groundY = BASE_Y + BLOCK_H + cameraY;
+  if (groundY < H) {
+    const gGrad = ctx.createLinearGradient(0, groundY, 0, H);
+    gGrad.addColorStop(0, '#0f1a2e');
+    gGrad.addColorStop(1, '#0b0b2e');
+    ctx.fillStyle = gGrad;
+    ctx.fillRect(0, groundY, W, H - groundY);
+
+    ctx.fillStyle = '#1a2540';
+    roundRect(W/2 - 120, groundY - 4, 240, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    roundRect(W/2 - 120, groundY - 4, 240, 4, 4);
+    ctx.fill();
+  }
+
+  // Guide lines
+  if (gameState === 'moving' && tower.length > 0 && movingBlock) {
+    const prev = tower[tower.length - 1];
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(prev.x, prev.y + cameraY - 200);
+    ctx.lineTo(prev.x, prev.y + cameraY + BLOCK_H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(prev.x + prev.w, prev.y + cameraY - 200);
+    ctx.lineTo(prev.x + prev.w, prev.y + cameraY + BLOCK_H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw tower
+  tower.forEach((block, i) => {
+    if (block.falling) {
+      if (block.fallDelay > 0) { block.fallDelay -= dt; }
+      else {
+        block.vy = (block.vy || 0) + GRAVITY * dt;
+        block.y += block.vy * dt;
+        block.x += (block.vx || 0) * dt;
+        block.rot = (block.rot || 0) + (block.vr || 0) * dt;
+        block.opacity = (block.opacity || 1) - dt * 0.6;
+      }
+    } else if (danger > 0 && gameState === 'moving') {
+      const sway = Math.sin(time * 2.5 + i * 0.2) * swayAmount * (i / tower.length);
+      block._drawX = block.x + sway;
+    }
+
+    const drawX = block._drawX || block.x;
+    drawBlock({ ...block, x: drawX }, cameraY);
+    delete block._drawX;
+  });
+
+  // Moving block
+  if (movingBlock && gameState === 'moving') {
+    let moveSpeed = movingBlock.speed;
+
+    // Wind effect on moving block
+    if (levelConfig && levelConfig.wind) {
+      movingBlock.x += windForce * dt * 60;
+    }
+
+    movingBlock.x += movingBlock.dir * moveSpeed;
+
+    if (movingBlock.x + movingBlock.w > W) { movingBlock.dir = -1; }
+    if (movingBlock.x < 0) { movingBlock.dir = 1; }
+
+    // Visual rotation (level 3)
+    if (levelConfig && levelConfig.visualRotation) {
+      movingBlock.visualRot = Math.sin(time * 3) * 0.05;
+    }
+
+    drawBlock(movingBlock, cameraY);
+
+    // Shadow preview
+    if (tower.length > 0) {
+      const prev = tower[tower.length - 1];
+      const oleft = Math.max(movingBlock.x, prev.x);
+      const oright = Math.min(movingBlock.x + movingBlock.w, prev.x + prev.w);
+      if (oright > oleft) {
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        roundRect(oleft, movingBlock.y + cameraY, oright - oleft, BLOCK_H, 4);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Cut piece
+  if (cutPiece) {
+    cutPiece.vy += GRAVITY * dt;
+    cutPiece.x += cutPiece.vx * dt;
+    cutPiece.y += cutPiece.vy * dt;
+    cutPiece.rot += cutPiece.vr * dt;
+    cutPiece.opacity -= dt * 1.2;
+    if (cutPiece.opacity > 0) {
+      ctx.save();
+      const cy = cutPiece.y + cameraY;
+      ctx.translate(cutPiece.x + cutPiece.w/2, cy + BLOCK_H/2);
+      ctx.rotate(cutPiece.rot);
+      ctx.globalAlpha = cutPiece.opacity;
+      const cGrad = ctx.createLinearGradient(-cutPiece.w/2, -BLOCK_H/2, cutPiece.w/2, BLOCK_H/2);
+      cGrad.addColorStop(0, cutPiece.color[0]);
+      cGrad.addColorStop(1, cutPiece.color[1]);
+      ctx.fillStyle = cGrad;
+      roundRect(-cutPiece.w/2, -BLOCK_H/2, cutPiece.w, BLOCK_H, 4);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      cutPiece = null;
+    }
+  }
+
+  // Particles
+  particles.forEach(p => {
+    p.vy = (p.vy || 0) + 500 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt * 1.5;
+    if (p.life > 0) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size/2, p.y + cameraY - p.size/2, p.size, p.size);
+    }
+  });
+  ctx.globalAlpha = 1;
+  particles = particles.filter(p => p.life > 0);
+
+  // Clean up fallen blocks
+  if (gameState === 'gameover') {
+    tower = tower.filter(b => (b.opacity || 1) > 0);
+  }
+
+  ctx.restore();
+
+  requestAnimationFrame(render);
+}
+
+// ============ INIT ============
+renderLevelSelect();
+render();
+</script>
+</body>
+</html>
